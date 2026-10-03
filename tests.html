@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en-AU">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Budget Tracker tests</title>
+  <style>body{font:16px system-ui;padding:16px}.pass{color:#0a7d33}.fail{color:#b42318;font-weight:700}</style>
+</head>
+<body>
+<h1>Budget Tracker self-check</h1>
+<ul id="out"></ul>
+<script src="app.js"></script>
+<script>
+  // Fails loudly: any failed check turns the page red, logs an error and throws.
+  const C = window.BudgetCalc;
+  const results = [];
+  const check = (name, ok, detail) => results.push({ name, ok, detail });
+  const near = (a, b, tol = 0.005) => Math.abs(a - b) < tol;
+
+  const t = C.totalsByPeriod(C.seedItems());
+  const expected = { Week: 365.18, Fortnight: 730.37, Month: 1582.46, Quarter: 4747.39, Year: 18989.55 };
+  for (const p of Object.keys(expected)) check('Seed total ' + p, near(t[p], expected[p], 0.01), `got ${t[p]}, expected ~${expected[p]}`);
+
+  const y = (cost, every, period) => C.yearlyCost({ cost, every, period });
+  check('$79 every 1 Year = 79/yr', near(y(79, 1, 'Year'), 79), y(79, 1, 'Year'));
+  check('$42.34 every 7 Weeks = 314.56/yr', near(y(42.34, 7, 'Week'), 42.34 * 52 / 7), y(42.34, 7, 'Week'));
+  check('$32 every 3 Months = 128/yr', near(y(32, 3, 'Month'), 128), y(32, 3, 'Month'));
+  check('Fortnight -> weekly halves', near(C.costForPeriod({ cost: 100, every: 1, period: 'Fortnight' }, 'Week'), 50), '');
+
+  const rt = C.parseImport(C.toCSV(C.seedItems()), 'x.csv');
+  check('CSV round trip keeps 17 items', rt.items.length === 17 && rt.skipped === 0, JSON.stringify(rt.skipped));
+  check('CSV round trip keeps totals', near(C.totalsByPeriod(rt.items).Year, t.Year, 1e-6), '');
+  check('Invalid rows skipped', C.parseImport('name,cost,every,period\nA,-1,1,Month\nB,5,0,Month\nC,5,1,Month', 'x.csv').items.length === 1, '');
+
+  const ul = document.getElementById('out');
+  results.forEach((r) => {
+    const li = document.createElement('li');
+    li.className = r.ok ? 'pass' : 'fail';
+    li.textContent = (r.ok ? 'PASS ' : 'FAIL ') + r.name + (r.ok ? '' : ' — ' + r.detail);
+    ul.appendChild(li);
+  });
+  const failed = results.filter((r) => !r.ok);
+  document.title = (failed.length ? 'FAIL' : 'PASS') + ' — Budget Tracker tests';
+  if (failed.length) {
+    document.body.style.background = '#fdeceb';
+    console.error('TESTS FAILED', failed);
+    throw new Error(failed.length + ' test(s) failed');
+  }
+  console.log('All ' + results.length + ' tests passed');
+</script>
+</body>
+</html>

@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en-AU">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Budget Tracker</title>
+  <meta name="description" content="Recurring costs converted to weekly, fortnightly, monthly, quarterly and yearly totals.">
+  <meta name="theme-color" content="#16315c">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Budget">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div id="app">
+  <header class="appbar"><h1 id="page-title">Budget Tracker</h1></header>
+
+  <main>
+    <!-- DASHBOARD -->
+    <section id="view-dashboard" class="view" aria-labelledby="page-title">
+      <div class="hero card">
+        <div class="period-toggle" role="radiogroup" aria-label="View as"></div>
+        <p id="headline-label" class="hero-label">Monthly total</p>
+        <p id="headline-value" class="hero-value" aria-live="polite" aria-atomic="true">$0.00</p>
+        <p id="item-count" class="hero-sub">0 items</p>
+      </div>
+
+      <h2>All periods</h2>
+      <div id="summary-cards" class="cards" aria-live="polite"></div>
+
+      <h2>Top 5 most expensive</h2>
+      <ol id="top-list" class="top-list card"></ol>
+
+      <h2>Cost share</h2>
+      <div class="card share">
+        <div id="donut" class="donut"></div>
+        <ul id="legend" class="legend"></ul>
+      </div>
+    </section>
+
+    <!-- ITEMS -->
+    <section id="view-items" class="view" hidden aria-label="Items">
+      <div class="period-toggle" role="radiogroup" aria-label="Show costs per"></div>
+      <div class="toolbar">
+        <label class="sr-only" for="search">Search items</label>
+        <input id="search" type="search" placeholder="Search items" autocomplete="off">
+        <label class="sr-only" for="sort">Sort by</label>
+        <select id="sort">
+          <option value="name">Name</option>
+          <option value="high">Highest cost</option>
+          <option value="low">Lowest cost</option>
+          <option value="newest">Newest</option>
+        </select>
+      </div>
+      <p id="items-summary" class="muted" aria-live="polite"></p>
+      <ul id="item-list" class="item-list"></ul>
+    </section>
+
+    <!-- SETTINGS -->
+    <section id="view-settings" class="view" hidden aria-label="Settings">
+      <h2>Theme</h2>
+      <div id="theme-toggle" class="period-toggle" role="radiogroup" aria-label="Theme">
+        <button type="button" role="radio" data-theme="auto">Auto</button>
+        <button type="button" role="radio" data-theme="light">Light</button>
+        <button type="button" role="radio" data-theme="dark">Dark</button>
+      </div>
+
+      <h2>Data</h2>
+      <div class="card stack">
+        <button id="export-json" class="btn" type="button">Export JSON</button>
+        <button id="export-csv" class="btn" type="button">Export CSV</button>
+        <label class="btn file-btn" for="import-file">Import JSON or CSV…</label>
+        <input id="import-file" class="sr-only" type="file" accept=".json,.csv,application/json,text/csv">
+      </div>
+
+      <h2>Reset</h2>
+      <div class="card stack">
+        <button id="load-example" class="btn" type="button">Load example data</button>
+        <button id="clear-all" class="btn danger" type="button">Clear all data</button>
+      </div>
+      <p class="muted">Everything is stored only on this device, in your browser.</p>
+    </section>
+  </main>
+
+  <button id="fab" class="fab" type="button" aria-label="Add item" hidden>+</button>
+
+  <nav class="tabbar" aria-label="Main">
+    <button type="button" data-tab="dashboard"><span aria-hidden="true">📊</span>Dashboard</button>
+    <button type="button" data-tab="items"><span aria-hidden="true">🧾</span>Items</button>
+    <button type="button" data-tab="settings"><span aria-hidden="true">⚙️</span>Settings</button>
+  </nav>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+</div>
+
+<!-- Add / edit form -->
+<dialog id="form-dialog" aria-labelledby="form-title">
+  <form id="item-form" novalidate>
+    <h2 id="form-title">Add item</h2>
+    <div class="field">
+      <label for="f-name">Name</label>
+      <input id="f-name" type="text" autocomplete="off" maxlength="80" aria-describedby="e-name" required>
+      <p id="e-name" class="error" role="alert"></p>
+    </div>
+    <div class="field">
+      <label for="f-cost">Cost ($)</label>
+      <input id="f-cost" type="text" inputmode="decimal" autocomplete="off" aria-describedby="e-cost" required>
+      <p id="e-cost" class="error" role="alert"></p>
+    </div>
+    <div class="row2">
+      <div class="field">
+        <label for="f-every">Every</label>
+        <input id="f-every" type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="off" aria-describedby="e-every" required>
+        <p id="e-every" class="error" role="alert"></p>
+      </div>
+      <div class="field">
+        <label for="f-period">Period</label>
+        <select id="f-period">
+          <option>Week</option><option>Fortnight</option><option>Month</option><option>Quarter</option><option>Year</option>
+        </select>
+      </div>
+    </div>
+    <div id="preview" class="preview" aria-live="polite" aria-label="Cost preview"></div>
+    <div class="actions">
+      <button id="form-cancel" type="button" class="btn ghost">Cancel</button>
+      <button type="submit" class="btn primary">Save</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- Generic confirm -->
+<dialog id="confirm-dialog" aria-labelledby="confirm-title" aria-describedby="confirm-message">
+  <h2 id="confirm-title"></h2>
+  <p id="confirm-message"></p>
+  <div id="confirm-actions" class="actions"></div>
+</dialog>
+
+<script src="app.js"></script>
+</body>
+</html>
