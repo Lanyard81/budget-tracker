@@ -1,13 +1,17 @@
 /* Offline-first service worker. Relative paths only so it works under /<repo-name>/. */
-const CACHE = 'budget-tracker-v1'; // bump when shipping changes to cached files
+const CACHE = 'budget-tracker-v2'; // bump when shipping changes to cached files; old caches are deleted on activate
 const SHELL = [
   './', 'index.html', 'styles.css', 'app.js', 'manifest.webmanifest',
+  'js/constants.js', 'js/dates.js', 'js/model.js', 'js/calc.js', 'js/storage.js', 'js/csv.js', 'js/bank.js', 'js/ics.js', 'js/dom.js',
   'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-512.png', 'icons/apple-touch-icon.png',
 ];
 
+// A new version waits until the page asks for it (the "update available" prompt), so the page never mixes versions.
 self.addEventListener('install', (event) => {
-  event.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));
+  event.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)));
 });
+
+self.addEventListener('message', (event) => { if (event.data === 'SKIP_WAITING') self.skipWaiting(); });
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(
