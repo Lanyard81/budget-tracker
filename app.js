@@ -131,7 +131,7 @@ function renderDashboard(today, alerts) {
       return h('li', { class: al ? 'alerting' : '' },
         h('div', { class: 'up-main' }, h('span', { class: 'up-name' }, u.item.name),
           h('span', { class: 'up-sub' }, `${formatDate(u.due, today)} · ${dueText(u.days)}`, u.item.category ? ` · ${u.item.category}` : '')),
-        h('div', { class: 'up-side' }, h('span', { class: 'up-amt' }, formatMoney(u.amount)), al && chip(al, 'warn')));
+        h('div', { class: 'up-side' }, h('span', { class: 'up-amt' }, formatMoney(u.amount)), al && chip('▲ ' + al, 'warn')));
     }))
     : h('p', { class: 'muted card' }, 'No dated items yet.')));
 
@@ -265,8 +265,8 @@ function renderItems(today) {
       h('button', { type: 'button', class: 'item-main', 'data-edit': it.id, 'aria-label': `Edit ${it.name}` },
         h('span', { class: 'item-text' }, h('span', { class: 'item-name' }, it.name), h('span', { class: 'item-freq' }, freqLabel(it))),
         h('span', { class: 'item-cost' }, formatMoney(C.periodAmount(it, view)), h('small', null, ' /' + view.toLowerCase()))),
-      h('div', { class: 'chips' }, !active && chip('Paused'), it.category && chip(it.category), it.type && chip(it.type, it.type === 'Need' ? 'need' : 'want'),
-        due && chip(`Due ${formatDate(due, today)} · ${dueText(daysBetween(today, due))}`), alert && chip(alert, 'warn'), riseIds.has(it.id) && chip('Price rise', 'bad')),
+      h('div', { class: 'chips' }, !active && chip('‖ Paused'), it.category && chip(it.category), it.type && chip(it.type, it.type === 'Need' ? 'need' : 'want'),
+        due && chip(`Due ${formatDate(due, today)} · ${dueText(daysBetween(today, due))}`), alert && chip('▲ ' + alert, 'warn'), riseIds.has(it.id) && chip('▲ Price rise', 'bad')),
       h('div', { class: 'row-actions' },
         h('button', { type: 'button', class: 'btn small', 'data-toggle': it.id }, active ? 'Pause' : 'Resume'),
         h('button', { type: 'button', class: 'btn small', 'data-whatif': it.id }, 'What if I cancel?'),
@@ -292,7 +292,7 @@ function renderPrices(today) {
         h('span', { class: 'item-text' }, h('span', { class: 'item-name' }, r.item ? r.item.name : '(deleted item)'),
           h('span', { class: 'item-freq' }, `${formatDate(r.change.date, today)} · ${formatMoney(r.change.oldCost)} → ${formatMoney(r.change.newCost)}`)),
         h('span', { class: 'item-cost ' + cls }, `${sign}${formatMoney(r.diff)}`, h('small', null, ` ${sign}${(r.pct * 100).toFixed(1)}%`))),
-      h('div', { class: 'chips' }, r.item && chip(`${sign}${formatMoney(r.yearlyImpact)} / year`, cls)),
+      h('div', { class: 'chips' }, r.item && chip(`${rise ? '▲' : '▼'} ${sign}${formatMoney(r.yearlyImpact)} / year`, cls)),
       h('div', { class: 'row-actions' },
         r.item && Math.abs(r.item.cost - r.change.newCost) > 1e-9 && h('button', { type: 'button', class: 'btn small', 'data-price-apply': r.change.id }, `Set item cost to ${formatMoney(r.change.newCost)}`),
         h('button', { type: 'button', class: 'btn small danger', 'data-price-delete': r.change.id }, 'Delete')));
@@ -324,8 +324,8 @@ function applyTheme() {
   const root = document.documentElement;
   const t = state.settings.theme;
   if (t === 'auto') root.removeAttribute('data-theme'); else root.dataset.theme = t;
-  const dark = t === 'dark' || (t === 'auto' && matchMedia('(prefers-color-scheme: dark)').matches);
-  document.querySelector('meta[name="theme-color"]').setAttribute('content', dark ? '#0b1626' : '#16315c');
+  const dark = t === 'dark' || (t === 'auto' && !matchMedia('(prefers-color-scheme: light)').matches);
+  document.querySelector('meta[name="theme-color"]').setAttribute('content', dark ? '#07070b' : '#f2f2f7');
 }
 
 /* ----- toast & dialogs ----- */

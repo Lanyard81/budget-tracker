@@ -3,7 +3,9 @@ const fs = require('fs');
 const path = require('path');
 const zlib = require('zlib');
 
-const NAVY = [22, 49, 92], SOFT = [159, 200, 245], WHITE = [255, 255, 255];
+// DevDan Startup palette: near-black bg, aurora glow, accent/teal bars.
+const BG = [7, 7, 11], TEAL = [64, 200, 224], WHITE = [245, 245, 247], BLUE = [100, 181, 255];
+const glow = (u, v, cx, cy, r) => Math.pow(Math.max(0, 1 - Math.hypot(u - cx, v - cy) / r), 2);
 
 // Signed distance to a rounded rect centred (cx,cy) with half-sizes (hw,hh) and radius r.
 function sdRound(px, py, cx, cy, hw, hh, r) {
@@ -20,10 +22,13 @@ function draw(size, { scale, rounded }) {
     for (let sy = 0; sy < S; sy++) for (let sx = 0; sx < S; sx++) {
       const u = (x + (sx + .5) / S) / size, v = (y + (sy + .5) / S) / size; // 0..1
       let col = null;
-      if (!rounded || sdRound(u, v, .5, .5, .5, .5, .22) < 0) col = NAVY;
+      if (!rounded || sdRound(u, v, .5, .5, .5, .5, .22) < 0) {
+        const a1 = glow(u, v, .15, .1, .8) * .75, a2 = glow(u, v, .95, .95, .7) * .65;
+        col = [0, 1, 2].map((k) => Math.min(255, BG[k] + [94, 92, 230][k] * a1 + [10, 132, 255][k] * a2));
+      }
       if (col) {
         // three rising bars, centred
-        const bars = [[-.2, .14, SOFT], [0, .24, WHITE], [.2, .36, SOFT]];
+        const bars = [[-.2, .14, TEAL], [0, .24, WHITE], [.2, .36, BLUE]];
         for (const [ox, h, c] of bars) {
           const cx = .5 + ox * scale, bw = .075 * scale, bh = h * scale;
           const cy = .5 + .18 * scale - bh;
@@ -58,7 +63,7 @@ fs.writeFileSync(path.join(out, 'icon-512.png'), draw(512, { scale: 1, rounded: 
 fs.writeFileSync(path.join(out, 'icon-maskable-512.png'), draw(512, { scale: .72, rounded: false }));
 fs.writeFileSync(path.join(out, 'apple-touch-icon.png'), draw(180, { scale: .9, rounded: false })); // iOS rounds it itself
 fs.writeFileSync(path.join(out, 'icon.svg'),
-`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" rx="22" fill="#16315c"/>
-<rect x="27" y="53" width="15" height="14" rx="5" fill="#9fc8f5"/><rect x="42.5" y="43" width="15" height="24" rx="5" fill="#fff"/><rect x="58" y="31" width="15" height="36" rx="5" fill="#9fc8f5"/></svg>
+`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><radialGradient id="a" cx=".15" cy=".1" r=".8"><stop offset="0" stop-color="#5e5ce6" stop-opacity=".75"/><stop offset="1" stop-color="#5e5ce6" stop-opacity="0"/></radialGradient><radialGradient id="b" cx=".95" cy=".95" r=".7"><stop offset="0" stop-color="#0a84ff" stop-opacity=".65"/><stop offset="1" stop-color="#0a84ff" stop-opacity="0"/></radialGradient></defs><rect width="100" height="100" rx="22" fill="#07070b"/><rect width="100" height="100" rx="22" fill="url(#a)"/><rect width="100" height="100" rx="22" fill="url(#b)"/>
+<rect x="27" y="53" width="15" height="14" rx="5" fill="#40c8e0"/><rect x="42.5" y="43" width="15" height="24" rx="5" fill="#f5f5f7"/><rect x="58" y="31" width="15" height="36" rx="5" fill="#64b5ff"/></svg>
 `);
 console.log('icons written');

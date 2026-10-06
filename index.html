@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Budget Tracker</title>
   <meta name="description" content="Recurring costs converted to weekly, fortnightly, monthly, quarterly and yearly totals, with due dates, alerts and forecasts.">
-  <meta name="theme-color" content="#16315c">
+  <meta name="theme-color" content="#07070b">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -140,13 +140,13 @@
     </section>
   </main>
 
-  <button id="fab" class="fab" type="button" aria-label="Add item" hidden>+</button>
+  <button id="fab" class="fab" type="button" aria-label="Add item" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
 
   <nav class="tabbar" aria-label="Main">
-    <button type="button" data-tab="dashboard"><span aria-hidden="true">📊</span>Dashboard<b id="tab-badge" class="tab-badge" hidden></b></button>
-    <button type="button" data-tab="items"><span aria-hidden="true">🧾</span>Items</button>
-    <button type="button" data-tab="prices"><span aria-hidden="true">📈</span>Prices</button>
-    <button type="button" data-tab="settings"><span aria-hidden="true">⚙️</span>Settings</button>
+    <button type="button" data-tab="dashboard"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>Dashboard<b id="tab-badge" class="tab-badge" hidden></b></button>
+    <button type="button" data-tab="items"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13M3.5 6h.01M3.5 12h.01M3.5 18h.01"/></svg>Items</button>
+    <button type="button" data-tab="prices"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/></svg>Prices</button>
+    <button type="button" data-tab="settings"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h8M18 6h2M4 12h2M12 12h8M4 18h10M20 18h0"/><circle cx="15" cy="6" r="2.2"/><circle cx="9" cy="12" r="2.2"/><circle cx="17" cy="18" r="2.2"/></svg>Settings</button>
   </nav>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>

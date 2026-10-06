@@ -56,3 +56,7 @@ Open `tests.html` (green/red), or run `node scripts/run-tests.mjs`. Both run the
 ## Layout & deployment
 
 `index.html`, `styles.css`, `app.js` (UI), `js/` (constants, dates, model, calc, storage, csv, bank, ics, dom, tests-core), `manifest.webmanifest`, `service-worker.js`, `icons/`. All paths are relative, so it works under `/<repo-name>/`. Hosted on GitHub Pages from `main` / root. When you change cached files, bump `CACHE` in `service-worker.js` and add any new files to its `SHELL` list. `node scripts/make-icons.js` regenerates the icons.
+
+## Visual design
+
+Styled with the **DevDan Startup** design system: dark-first frosted glass over a soft aurora backdrop, SF Pro (Inter/system fallback), mono uppercase eyebrow labels, a floating pill tab bar, line icons and symbol-plus-word status badges (▲ Due soon, ▲ Price rise). Light mode follows the OS or the Theme setting. Fonts are the device's system fonts, so there are no external requests. It falls back to solid glass where `backdrop-filter` is unsupported or reduced transparency is requested.
