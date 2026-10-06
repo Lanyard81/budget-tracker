@@ -64,6 +64,46 @@
       <ul id="item-list" class="item-list"></ul>
     </section>
 
+    <!-- ONE-OFF SPENDS -->
+    <section id="view-spend" class="view" hidden aria-label="One-off spends">
+      <h2 id="spend-form-title">Add a one-off spend</h2>
+      <form id="spend-form" class="card" novalidate>
+        <div class="field"><label for="sp-name">What was it?</label><input id="sp-name" type="text" autocomplete="off" maxlength="80"></div>
+        <div class="row2">
+          <div class="field"><label for="sp-amount">Amount ($)</label><input id="sp-amount" type="text" inputmode="decimal" autocomplete="off"></div>
+          <div class="field"><label for="sp-date">Date</label><input id="sp-date" type="date"></div>
+        </div>
+        <div class="field"><label for="sp-cat">Category</label><select id="sp-cat"></select></div>
+        <p id="sp-error" class="error" role="alert"></p>
+        <div class="actions">
+          <button id="sp-cancel" class="btn ghost" type="button" hidden>Cancel</button>
+          <button id="sp-submit" class="btn primary" type="submit">Add spend</button>
+        </div>
+      </form>
+      <h2>Summary</h2>
+      <div id="spend-summary" class="cards"></div>
+      <h2>History</h2>
+      <ul id="spend-list" class="item-list"></ul>
+    </section>
+
+    <!-- SAVINGS -->
+    <section id="view-savings" class="view" hidden aria-label="Savings">
+      <div id="savings-total"></div>
+      <h2>New savings goal</h2>
+      <form id="goal-form" class="card" novalidate>
+        <div class="field"><label for="g-name">Goal name</label><input id="g-name" type="text" autocomplete="off" maxlength="80"></div>
+        <div class="row2">
+          <div class="field"><label for="g-target">Target ($, optional)</label><input id="g-target" type="text" inputmode="decimal" autocomplete="off"></div>
+          <div class="field"><label for="g-start">Already saved ($)</label><input id="g-start" type="text" inputmode="decimal" autocomplete="off"></div>
+        </div>
+        <div class="field"><label for="g-date">Target date (optional)</label><input id="g-date" type="date"></div>
+        <p id="g-error" class="error" role="alert"></p>
+        <button class="btn primary block" type="submit">Add goal</button>
+      </form>
+      <h2>Goals</h2>
+      <ul id="goal-list" class="item-list"></ul>
+    </section>
+
     <!-- PRICE HISTORY -->
     <section id="view-prices" class="view" hidden aria-label="Price history">
       <h2>Log a price change</h2>
@@ -84,6 +124,9 @@
 
     <!-- SETTINGS -->
     <section id="view-settings" class="view" hidden aria-label="Settings">
+      <h2>Features</h2>
+      <div class="card"><div id="feature-list"></div><p class="muted">Switching a feature off hides it. Your data is kept and comes back when you switch it on again.</p></div>
+
       <h2>Income</h2>
       <div class="card">
         <div class="field"><label for="s-inc-amount">Income per payment ($)</label><input id="s-inc-amount" type="text" inputmode="decimal" autocomplete="off"></div>
@@ -103,7 +146,15 @@
       </div>
 
       <h2>Categories</h2>
-      <div class="card"><div id="cat-list"></div><p class="muted">Renaming a category updates the items that use it.</p></div>
+      <div class="card">
+        <div id="cat-list"></div>
+        <form id="cat-add-form" class="cat-row" novalidate>
+          <label class="sr-only" for="cat-new">New category name</label>
+          <input id="cat-new" type="text" maxlength="40" autocomplete="off" placeholder="New category">
+          <button class="btn primary small" type="submit">Add</button>
+        </form>
+        <p class="muted">Renaming a category updates the items and spends that use it. Removing one leaves them uncategorised.</p>
+      </div>
 
       <h2>Theme</h2>
       <div id="theme-toggle" class="period-toggle" role="radiogroup" aria-label="Theme">
@@ -143,8 +194,10 @@
   <button id="fab" class="fab" type="button" aria-label="Add item" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
 
   <nav class="tabbar" aria-label="Main">
-    <button type="button" data-tab="dashboard"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>Dashboard<b id="tab-badge" class="tab-badge" hidden></b></button>
+    <button type="button" data-tab="dashboard"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>Home<b id="tab-badge" class="tab-badge" hidden></b></button>
     <button type="button" data-tab="items"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13M3.5 6h.01M3.5 12h.01M3.5 18h.01"/></svg>Items</button>
+    <button type="button" data-tab="spend"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6"/></svg>Spend</button>
+    <button type="button" data-tab="savings"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v10M14.5 9.5C14.5 8.6 13.4 8 12 8s-2.5.7-2.5 1.8 1 1.6 2.5 1.9 2.5.9 2.5 1.9S13.4 16 12 16s-2.5-.6-2.5-1.5"/></svg>Savings</button>
     <button type="button" data-tab="prices"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/></svg>Prices</button>
     <button type="button" data-tab="settings"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h8M18 6h2M4 12h2M12 12h8M4 18h10M20 18h0"/><circle cx="15" cy="6" r="2.2"/><circle cx="9" cy="12" r="2.2"/><circle cx="17" cy="18" r="2.2"/></svg>Settings</button>
   </nav>

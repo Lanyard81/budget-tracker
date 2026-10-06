@@ -320,3 +320,22 @@ dialog p { margin: 0 0 var(--space-3); }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
+
+/* Features, categories, savings */
+.tabbar button[hidden] { display: none; }
+.tabbar button { font-size: 10.5px; }
+.cat-row { display: flex; gap: var(--space-2); margin-bottom: var(--space-2); align-items: center; }
+.cat-row input { flex: 1; min-width: 0; }
+.feature { align-items: flex-start; padding: var(--space-2) 0; border-bottom: 1px solid var(--glass-border); }
+.feature:last-child { border-bottom: 0; }
+.feature input { margin-top: 4px; }
+.feature .hint { margin: 0; }
+.goal-progress { padding: 0 var(--space-4) var(--space-2); }
+.goal-progress .bar { margin-top: 4px; }
+.goal-progress .bar span.done { background: var(--success); }
+.goal-meta { color: var(--ink-2); font-size: 14px; line-height: 20px; margin: 6px 0 0; }
+.history { padding: 0 var(--space-4) var(--space-4); font-size: 14px; }
+.history summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; color: var(--link); font-weight: 600; }
+.history ul { list-style: none; margin: 0; padding: 0; }
+.history li { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 4px 0; border-bottom: 1px solid var(--glass-border); }
+.history .btn { min-height: 44px; }

@@ -1,5 +1,5 @@
 // Data model: validation/normalisation of items, price changes and settings; seed data; merging.
-import { PERIODS, TYPES, SEED_ROWS, DEFAULT_SETTINGS, DEFAULT_CATEGORIES } from './constants.js';
+import { PERIODS, TYPES, SEED_ROWS, DEFAULT_SETTINGS, DEFAULT_CATEGORIES, DEFAULT_FEATURES, MAX_CATEGORIES } from './constants.js';
 import { parseFlexibleDate } from './dates.js';
 
 let idCounter = 0;
@@ -87,8 +87,16 @@ export function normaliseSettings(raw) {
   const d = DEFAULT_SETTINGS;
   const inc = r.income && typeof r.income === 'object' ? r.income : {};
   const amount = parseMoney(inc.amount);
-  const cats = Array.isArray(r.categories) && r.categories.length === 10 && r.categories.every((c) => typeof c === 'string' && c.trim())
-    ? r.categories.map((c) => c.trim()) : DEFAULT_CATEGORIES.slice();
+  // Any number of categories (unique, non-blank, case-insensitive); falls back to the defaults if missing.
+  const cats = Array.isArray(r.categories) ? [] : DEFAULT_CATEGORIES.slice();
+  if (Array.isArray(r.categories)) {
+    for (const c of r.categories) {
+      const name = typeof c === 'string' ? c.trim().slice(0, 40) : '';
+      if (name && !cats.some((x) => x.toLowerCase() === name.toLowerCase()) && cats.length < MAX_CATEGORIES) cats.push(name);
+    }
+  }
+  const feat = r.features && typeof r.features === 'object' ? r.features : {};
+  const features = Object.fromEntries(Object.keys(DEFAULT_FEATURES).map((k) => [k, typeof feat[k] === 'boolean' ? feat[k] : DEFAULT_FEATURES[k]]));
   const bm = r.bankMapping;
   return {
     income: {
@@ -102,8 +110,36 @@ export function normaliseSettings(raw) {
     theme: ['auto', 'light', 'dark'].includes(r.theme) ? r.theme : 'auto',
     view: PERIODS.includes(r.view) ? r.view : d.view,
     notify: r.notify === true,
+    features,
     bankMapping: bm && typeof bm === 'object' ? { date: String(bm.date || ''), desc: String(bm.desc || ''), amount: String(bm.amount || '') } : null,
   };
+}
+
+// One-off spend: {id, date, name, amount, category, notes} or null if invalid.
+export function normaliseSpend(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  const name = String(raw.name ?? '').trim();
+  const amount = parseMoney(raw.amount);
+  const date = parseFlexibleDate(raw.date);
+  if (!name || !(amount > 0) || !date) return null;
+  return { id: raw.id ? String(raw.id) : newId(), date, name: name.slice(0, 80), amount, category: String(raw.category ?? '').trim(), notes: String(raw.notes ?? '').trim().slice(0, 500) };
+}
+// Savings goal: {id, name, target (0 = no target), targetDate ('' = none)} or null.
+export function normaliseGoal(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  const name = String(raw.name ?? '').trim();
+  if (!name) return null;
+  const target = parseMoney(raw.target);
+  const targetDate = raw.targetDate ? parseFlexibleDate(raw.targetDate) : '';
+  return { id: raw.id ? String(raw.id) : newId(), name: name.slice(0, 80), target: target > 0 ? target : 0, targetDate: targetDate || '' };
+}
+// Savings transaction: positive = money put in, negative = money taken out.
+export function normaliseTxn(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  const amount = parseMoney(raw.amount);
+  const date = parseFlexibleDate(raw.date);
+  if (!raw.goalId || !date || !Number.isFinite(amount) || amount === 0) return null;
+  return { id: raw.id ? String(raw.id) : newId(), goalId: String(raw.goalId), date, amount };
 }
 
 export function seedItems() {

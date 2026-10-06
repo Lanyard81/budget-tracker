@@ -203,3 +203,40 @@ export function priceRises(changes, items, today, lookbackDays) {
     yearlyImpact: rises.reduce((s, r) => s + r.yearlyImpact, 0),
   };
 }
+
+/* ---------- one-off spends ---------- */
+// Totals use spends dated on or before today. `byCategory` covers the current calendar month.
+export function oneOffSummary(spends, today, categories) {
+  const past = spends.filter((s) => s.date <= today);
+  const sum = (list) => list.reduce((t, s) => t + s.amount, 0);
+  const month = today.slice(0, 7);
+  const monthList = past.filter((s) => s.date.slice(0, 7) === month);
+  const from30 = I(D(today) - 29);
+  const groups = new Map();
+  for (const s of monthList) {
+    const key = categories.includes(s.category) ? s.category : 'Uncategorised / other';
+    groups.set(key, (groups.get(key) || 0) + s.amount);
+  }
+  const thisMonth = sum(monthList);
+  return {
+    thisMonth, count: monthList.length,
+    last30: sum(past.filter((s) => s.date >= from30)),
+    ytd: sum(past.filter((s) => s.date.slice(0, 4) === today.slice(0, 4))),
+    byCategory: [...groups].map(([name, total]) => ({ name, total, pct: thisMonth ? total / thisMonth : 0 })).sort((a, b) => b.total - a.total),
+  };
+}
+
+/* ---------- savings ---------- */
+export const goalBalance = (goal, txns) => txns.filter((t) => t.goalId === goal.id).reduce((s, t) => s + t.amount, 0);
+export const totalSaved = (goals, txns) => goals.reduce((s, g) => s + goalBalance(g, txns), 0);
+export function goalStatus(goal, txns, today) {
+  const saved = goalBalance(goal, txns);
+  const target = goal.target || 0;
+  const remaining = target > 0 ? Math.max(0, target - saved) : null;
+  const daysLeft = target > 0 && goal.targetDate ? D(goal.targetDate) - D(today) : null;
+  const perFortnight = remaining > 0 && daysLeft !== null && daysLeft > 0 ? remaining / (daysLeft / 14) : null;
+  return {
+    saved, target, remaining, daysLeft, perFortnight,
+    pct: target > 0 ? Math.min(1, Math.max(0, saved / target)) : null, reached: target > 0 && saved >= target,
+  };
+}

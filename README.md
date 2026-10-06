@@ -60,3 +60,11 @@ Open `tests.html` (green/red), or run `node scripts/run-tests.mjs`. Both run the
 ## Visual design
 
 Styled with the **DevDan Startup** design system: dark-first frosted glass over a soft aurora backdrop, SF Pro (Inter/system fallback), mono uppercase eyebrow labels, a floating pill tab bar, line icons and symbol-plus-word status badges (▲ Due soon, ▲ Price rise). Light mode follows the OS or the Theme setting. Fonts are the device's system fonts, so there are no external requests. It falls back to solid glass where `backdrop-filter` is unsupported or reduced transparency is requested.
+
+## Optional features, one-off spends and savings
+
+- **Features** (Settings → Features): switch One-off spends, Savings tracking, Price history, Alerts, Sinking fund and the 12-month forecast on or off. Off hides the tab and dashboard section; your data is kept and returns when you switch it back on.
+- **Categories:** add your own in Settings → Categories (up to 40), rename them (items and spends follow), or remove them (those items and spends become uncategorised).
+- **One-off spends** (Spend tab): log a single purchase with a date, amount and category; tap one to edit it. Totals for this month, the last 30 days and the year to date appear on the tab and the dashboard, kept separate from your recurring costs.
+- **Savings** (Savings tab): create goals with an optional target, target date and starting balance. Add money or withdraw (you can't withdraw more than is saved). Goals with a target show progress, the amount to go and what to save per fortnight to hit the date.
+- The JSON backup includes one-offs, savings and your feature choices; CSV export stays items-only for the spreadsheet round trip.

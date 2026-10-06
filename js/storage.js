@@ -1,7 +1,7 @@
 // Storage behind a small interface: get() / set(data) / export(). `backend` is anything with getItem/setItem
 // (localStorage by default), so a cloud-sync backend could be swapped in later.
 import { STORAGE_KEY, SCHEMA_VERSION } from './constants.js';
-import { normaliseItem, normalisePriceChange, normaliseSettings, seedItems } from './model.js';
+import { normaliseItem, normalisePriceChange, normaliseSettings, normaliseSpend, normaliseGoal, normaliseTxn, seedItems } from './model.js';
 
 // Migration hook: bring any older saved shape up to SCHEMA_VERSION. Throws if the data is unusable.
 export function migrate(data) {
@@ -9,18 +9,24 @@ export function migrate(data) {
   const v = Number(data.schema) || 0;
   // v0/v1 -> v2: items gained category/type/share/active/dates/notes/link, plus priceChanges and richer settings.
   // normaliseItem()/normaliseSettings() fill those defaults, so no per-field transform is needed.
-  // if (v < 3) { ...future steps here... }
+  // v2 -> v3: added oneOffs, savingsGoals, savingsTxns and settings.features (default to empty / all on).
+  // if (v < 4) { ...future steps here... }
   if (v > SCHEMA_VERSION) console.warn('Data was saved by a newer version of the app');
   return {
     schema: SCHEMA_VERSION,
     items: (Array.isArray(data.items) ? data.items : []).map(normaliseItem).filter((r) => r.item).map((r) => r.item),
     priceChanges: (Array.isArray(data.priceChanges) ? data.priceChanges : []).map(normalisePriceChange).filter(Boolean),
+    oneOffs: (Array.isArray(data.oneOffs) ? data.oneOffs : []).map(normaliseSpend).filter(Boolean),
+    savingsGoals: (Array.isArray(data.savingsGoals) ? data.savingsGoals : []).map(normaliseGoal).filter(Boolean),
+    savingsTxns: (Array.isArray(data.savingsTxns) ? data.savingsTxns : []).map(normaliseTxn).filter(Boolean),
     settings: normaliseSettings(data.settings),
   };
 }
 
+const snapshot = (d) => ({ schema: SCHEMA_VERSION, items: d.items, priceChanges: d.priceChanges, oneOffs: d.oneOffs || [], savingsGoals: d.savingsGoals || [], savingsTxns: d.savingsTxns || [], settings: d.settings });
+
 export function emptyData() {
-  return { schema: SCHEMA_VERSION, items: [], priceChanges: [], settings: normaliseSettings({}) };
+  return { schema: SCHEMA_VERSION, items: [], priceChanges: [], oneOffs: [], savingsGoals: [], savingsTxns: [], settings: normaliseSettings({}) };
 }
 
 export function createStorage(backend, key = STORAGE_KEY) {
@@ -37,10 +43,10 @@ export function createStorage(backend, key = STORAGE_KEY) {
     },
     set(data) {
       try {
-        backend.setItem(key, JSON.stringify({ schema: SCHEMA_VERSION, items: data.items, priceChanges: data.priceChanges, settings: data.settings }));
+        backend.setItem(key, JSON.stringify(snapshot(data)));
         return true;
       } catch (e) { return false; }
     },
-    export(data) { return JSON.stringify({ schema: SCHEMA_VERSION, items: data.items, priceChanges: data.priceChanges, settings: data.settings }, null, 2); },
+    export(data) { return JSON.stringify(snapshot(data), null, 2); },
   };
 }

@@ -1,6 +1,6 @@
 // Test suite shared by tests.html (browser) and scripts/run-tests.mjs (Node). today = 2026-10-04 throughout.
 import * as C from './calc.js';
-import { seedItems, normaliseItem, mergeItems } from './model.js';
+import { seedItems, normaliseItem, mergeItems, normaliseSettings, normaliseSpend, normaliseGoal, normaliseTxn } from './model.js';
 import { addDays } from './dates.js';
 import { createStorage, migrate } from './storage.js';
 import { itemsToCSV, parseItemsCSV, parseImportFile, CSV_HEADERS } from './csv.js';
@@ -161,7 +161,7 @@ export function runTests() {
   const throwing = { getItem() { throw new Error('blocked'); }, setItem() { throw new Error('blocked'); } };
   check('storage: unavailable handled', createStorage(throwing).get().status === 'unavailable' && createStorage(throwing).set({ items: [] }) === false);
   const v1 = migrate({ schema: 1, items: [{ id: 'a', name: 'Old', cost: 10, every: 1, period: 'Month' }], settings: { theme: 'dark', view: 'Week' } });
-  eq('migrate: v1 -> v2 keeps data, adds defaults', [v1.schema, v1.items[0].active, v1.items[0].share, v1.settings.theme, v1.settings.view, v1.settings.categories.length], [2, true, 1, 'dark', 'Week', 10]);
+  eq('migrate: v1 -> v2 keeps data, adds defaults', [v1.schema, v1.items[0].active, v1.items[0].share, v1.settings.theme, v1.settings.view, v1.settings.categories.length], [3, true, 1, 'dark', 'Week', 10]);
 
   /* ---------- bank import ---------- */
   eq('bank: detect columns', detectColumns(['Transaction Date', 'Narrative', 'Debit Amount', 'Balance']), { date: 0, desc: 1, amount: 2 });
@@ -190,6 +190,37 @@ export function runTests() {
   const events = (ics.match(/BEGIN:VEVENT/g) || []).length;
   check('ics: many events, paused item excluded', events > 40 && !ics.includes('SUMMARY:Stan'), events);
   check('ics: Lyka today included', ics.includes('DTSTART;VALUE=DATE:20261004'));
+
+  /* ---------- categories, features, one-offs, savings ---------- */
+  eq('categories: any number, deduped case-insensitively', normaliseSettings({ categories: ['A', 'B', 'a', ' ', 'C'] }).categories, ['A', 'B', 'C']);
+  eq('categories: can be emptied', normaliseSettings({ categories: [] }).categories, []);
+  eq('categories: default set when missing', normaliseSettings({}).categories.length, 10);
+  eq('features: default all on', Object.values(normaliseSettings({}).features).every(Boolean), true);
+  const ff = normaliseSettings({ features: { savings: false, oneOffs: 'no' } }).features;
+  eq('features: saved flags kept, junk ignored', [ff.savings, ff.oneOffs], [false, true]);
+  const v2 = migrate({ schema: 2, items: [], priceChanges: [], settings: {} });
+  eq('migrate: v2 -> v3 adds empty one-offs/savings and features', [v2.schema, v2.oneOffs, v2.savingsGoals, v2.savingsTxns, v2.settings.features.savings], [3, [], [], [], true]);
+  check('one-off: validates', normaliseSpend({ name: 'x', amount: 0, date: '2026-10-01' }) === null && normaliseSpend({ name: 'x', amount: 5, date: 'nope' }) === null && normaliseSpend({ name: 'x', amount: '5.50', date: '1/10/2026' }).date === '2026-10-01');
+  const spends = [
+    { date: '2026-10-02', amount: 50, category: 'Food & groceries' }, { date: '2026-10-04', amount: 25.5, category: '' },
+    { date: '2026-09-30', amount: 100, category: 'Pets' }, { date: '2026-01-15', amount: 200, category: 'Pets' }, { date: '2026-10-20', amount: 999, category: 'Pets' },
+  ];
+  const os = C.oneOffSummary(spends, TODAY, normaliseSettings({}).categories);
+  money('one-off: this month (future-dated ignored)', os.thisMonth, 75.5); money('one-off: last 30 days', os.last30, 175.5); money('one-off: year to date', os.ytd, 375.5);
+  eq('one-off: month categories', os.byCategory.map((c) => c.name), ['Food & groceries', 'Uncategorised / other']);
+  check('goal: validates', normaliseGoal({ name: ' ' }) === null && normaliseGoal({ name: 'Holiday', target: 'abc' }).target === 0 && normaliseTxn({ goalId: 'g', date: '2026-10-01', amount: 0 }) === null);
+  const goal = { id: 'g1', name: 'Holiday', target: 1000, targetDate: '2027-01-04' };
+  const txns = [{ goalId: 'g1', amount: 300 }, { goalId: 'g1', amount: 200 }, { goalId: 'g1', amount: -50 }, { goalId: 'other', amount: 999 }];
+  const gs = C.goalStatus(goal, txns, TODAY);
+  money('savings: balance', gs.saved, 450); money('savings: remaining', gs.remaining, 550); money('savings: needed per fortnight', gs.perFortnight, 83.70);
+  eq('savings: progress and days left', [Math.round(gs.pct * 100), gs.daysLeft, gs.reached], [45, 92, false]);
+  const noTarget = C.goalStatus({ id: 'g2', target: 0 }, [], TODAY);
+  eq('savings: no target means no progress or plan', [noTarget.pct, noTarget.perFortnight], [null, null]);
+  check('savings: reached', C.goalStatus({ ...goal, target: 400 }, txns, TODAY).reached);
+  money('savings: total across goals', C.totalSaved([goal, { id: 'other' }], txns), 1449);
+  const full = { items: [], priceChanges: [], oneOffs: [{ id: 'o1', date: '2026-10-01', name: 'Coffee', amount: 4.5, category: '' }], savingsGoals: [goal], savingsTxns: [{ id: 't', goalId: 'g1', date: '2026-10-02', amount: 10 }], settings: normaliseSettings({}) };
+  const back = migrate(JSON.parse(createStorage(memoryBackend()).export(full)));
+  eq('export/import keeps one-offs and savings', [back.oneOffs.length, back.savingsGoals.length, back.savingsTxns.length], [1, 1, 1]);
 
   return results;
 }

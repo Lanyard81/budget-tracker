@@ -9,7 +9,19 @@ export const PERIOD_LABELS = { Week: 'Weekly', Fortnight: 'Fortnightly', Month: 
 export const TYPES = ['Need', 'Want'];
 
 export const STORAGE_KEY = 'budgetTracker:v1'; // key name kept so earlier saved data is migrated, not lost
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
+
+// Optional functions the user can switch on/off in Settings. Turning one off hides it but never deletes its data.
+export const FEATURES = [
+  { key: 'oneOffs', label: 'One-off spends', hint: "Log single purchases and see this month's total." },
+  { key: 'savings', label: 'Savings tracking', hint: 'Savings goals with deposits, withdrawals and progress.' },
+  { key: 'priceHistory', label: 'Price history', hint: 'Log price changes and flag price rises.' },
+  { key: 'alerts', label: 'Alerts', hint: 'Due soon / trial ends banner and tab badge.' },
+  { key: 'sinkingFund', label: 'Sinking fund', hint: 'Set-aside planning for big, infrequent bills.' },
+  { key: 'forecast', label: '12-month forecast', hint: 'Month-by-month cash-out chart and table.' },
+];
+export const DEFAULT_FEATURES = Object.fromEntries(FEATURES.map((f) => [f.key, true]));
+export const MAX_CATEGORIES = 40;
 
 export const DEFAULT_CATEGORIES = [
   'Streaming', 'Subscriptions', 'Pets', 'Household', 'Health & personal',
@@ -25,6 +37,7 @@ export const DEFAULT_SETTINGS = {
   theme: 'auto',
   view: 'Month',
   notify: false,
+  features: DEFAULT_FEATURES,
   bankMapping: null,
 };
 

@@ -1,5 +1,5 @@
 /* Offline-first service worker. Relative paths only so it works under /<repo-name>/. */
-const CACHE = 'budget-tracker-v3'; // bump when shipping changes to cached files; old caches are deleted on activate
+const CACHE = 'budget-tracker-v4'; // bump when shipping changes to cached files; old caches are deleted on activate
 const SHELL = [
   './', 'index.html', 'styles.css', 'app.js', 'manifest.webmanifest',
   'js/constants.js', 'js/dates.js', 'js/model.js', 'js/calc.js', 'js/storage.js', 'js/csv.js', 'js/bank.js', 'js/ics.js', 'js/dom.js',

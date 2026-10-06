@@ -1,10 +1,10 @@
 /* Budget Tracker — entry point: state, rendering and event handlers.
    Pure logic lives in js/ (constants, dates, model, calc, storage, csv, bank, ics). */
-import { PERIODS, PERIOD_LABELS } from './js/constants.js';
+import { PERIODS, PERIOD_LABELS, FEATURES, MAX_CATEGORIES } from './js/constants.js';
 import { localToday, formatDate, formatShort, daysBetween } from './js/dates.js';
 import { $, h, svgEl, formatMoney, formatPct, download } from './js/dom.js';
 import * as C from './js/calc.js';
-import { normaliseItem, normaliseSettings, normalisePriceChange, parseMoney, seedItems, mergeItems, newId } from './js/model.js';
+import { normaliseItem, normaliseSettings, normalisePriceChange, normaliseSpend, normaliseGoal, normaliseTxn, parseMoney, seedItems, mergeItems, newId } from './js/model.js';
 import { createStorage, emptyData } from './js/storage.js';
 import { itemsToCSV, parseImportFile, parseCSV } from './js/csv.js';
 import { detectColumns, readTransactions, findRecurring } from './js/bank.js';
@@ -13,7 +13,8 @@ import { buildICS } from './js/ics.js';
 /* ================================ STATE ================================ */
 const store = createStorage(window.localStorage);
 const state = {
-  items: [], priceChanges: [], settings: normaliseSettings({}),
+  items: [], priceChanges: [], oneOffs: [], savingsGoals: [], savingsTxns: [], settings: normaliseSettings({}),
+  editingSpendId: null,
   tab: 'dashboard', search: '', sort: 'name', fCat: '', fType: '', fStatus: '', fDue: false, editingId: null,
 };
 const T = () => localToday();
@@ -21,7 +22,7 @@ const save = () => { if (!store.set(state)) toast('Could not save (storage full 
 
 function loadState() {
   const { data, status } = store.get();
-  Object.assign(state, { items: data.items, priceChanges: data.priceChanges, settings: data.settings });
+  Object.assign(state, { items: data.items, priceChanges: data.priceChanges, oneOffs: data.oneOffs, savingsGoals: data.savingsGoals, savingsTxns: data.savingsTxns, settings: data.settings });
   if (status === 'missing' || status === 'ok') save(); // persists first-run seed data and any schema migration
   if (status === 'corrupt') toast('Saved data was unreadable and has been reset (a raw copy was kept).');
   if (status === 'unavailable') toast('Storage is unavailable; changes will not be kept.');
@@ -36,14 +37,21 @@ const freqLabel = (it) => {
 };
 const chip = (text, cls = '') => h('span', { class: 'chip ' + cls }, text);
 
+// Optional features can be switched off in Settings; a disabled feature's tab and sections are hidden (data is kept).
+const featureOn = (key) => state.settings.features[key];
+const tabEnabled = (tab) => ({ spend: featureOn('oneOffs'), savings: featureOn('savings'), prices: featureOn('priceHistory') }[tab] ?? true);
+
 function render() {
   const today = T();
-  const alerts = C.currentAlerts(state.items, today, state.settings.alertDays);
+  if (!tabEnabled(state.tab)) state.tab = 'dashboard';
+  const alerts = featureOn('alerts') ? C.currentAlerts(state.items, today, state.settings.alertDays) : [];
   renderChrome(alerts);
   renderViewToggles();
   renderDashboard(today, alerts);
   renderFilters();
   renderItems(today);
+  renderSpend(today);
+  renderSavings(today);
   renderPrices(today);
   renderSettings();
 }
@@ -51,6 +59,7 @@ function render() {
 function renderChrome(alerts) {
   document.querySelectorAll('.view').forEach((v) => { v.hidden = v.id !== 'view-' + state.tab; });
   document.querySelectorAll('.tabbar button').forEach((b) => {
+    b.hidden = !tabEnabled(b.dataset.tab);
     if (b.dataset.tab === state.tab) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current');
   });
   $('#fab').hidden = state.tab !== 'items';
@@ -106,9 +115,9 @@ function renderDashboard(today, alerts) {
   body.push(section('Key numbers', h('div', { class: 'cards' },
     stat('Active items', active), stat('Paused items', items.length - active),
     stat('Paused saves / year', formatMoney(C.pausedSavesPerYear(items)), 'good'),
-    stat(`Price rises (${settings.lookbackDays} days)`, rises.count),
-    stat('Rise impact / year', formatMoney(rises.yearlyImpact), rises.yearlyImpact > 0 ? 'bad' : ''),
-    stat('Alerts right now', alerts.length, alerts.length ? 'warn' : ''))));
+    featureOn('priceHistory') && stat(`Price rises (${settings.lookbackDays} days)`, rises.count),
+    featureOn('priceHistory') && stat('Rise impact / year', formatMoney(rises.yearlyImpact), rises.yearlyImpact > 0 ? 'bad' : ''),
+    featureOn('alerts') && stat('Alerts right now', alerts.length, alerts.length ? 'warn' : ''))));
 
   const anyDates = items.some((it) => it.paymentDate);
   if (!anyDates && items.length) {
@@ -127,13 +136,33 @@ function renderDashboard(today, alerts) {
   const up = C.upcomingPayments(items, today, 10);
   body.push(section('Upcoming payments', up.length
     ? h('ul', { class: 'upcoming card' }, up.map((u) => {
-      const al = C.alertFor(u.item, today, settings.alertDays);
+      const al = featureOn('alerts') ? C.alertFor(u.item, today, settings.alertDays) : null;
       return h('li', { class: al ? 'alerting' : '' },
         h('div', { class: 'up-main' }, h('span', { class: 'up-name' }, u.item.name),
           h('span', { class: 'up-sub' }, `${formatDate(u.due, today)} · ${dueText(u.days)}`, u.item.category ? ` · ${u.item.category}` : '')),
         h('div', { class: 'up-side' }, h('span', { class: 'up-amt' }, formatMoney(u.amount)), al && chip('▲ ' + al, 'warn')));
     }))
     : h('p', { class: 'muted card' }, 'No dated items yet.')));
+
+  // One-off spends and savings (optional features)
+  if (featureOn('oneOffs')) {
+    const os = C.oneOffSummary(state.oneOffs, today, settings.categories);
+    body.push(section('One-off spends', h('div', { class: 'cards three' },
+      stat('This month', formatMoney(os.thisMonth)), stat('Last 30 days', formatMoney(os.last30)), stat('Year to date', formatMoney(os.ytd))),
+    os.byCategory.length ? h('ul', { class: 'upcoming card' }, os.byCategory.slice(0, 4).map((c) => h('li', null,
+      h('div', { class: 'up-main' }, h('span', { class: 'up-name' }, c.name), h('span', { class: 'up-sub' }, `${formatPct(c.pct)} of this month`)),
+      h('div', { class: 'up-side' }, h('span', { class: 'up-amt' }, formatMoney(c.total)))))) : h('p', { class: 'muted' }, 'Nothing logged this month. Add spends on the Spend tab.')));
+  }
+  if (featureOn('savings')) {
+    const goals = state.savingsGoals;
+    body.push(section('Savings', h('div', { class: 'cards' }, stat('Total saved', formatMoney(C.totalSaved(goals, state.savingsTxns)), 'good'), stat('Goals', goals.length)),
+      goals.length ? h('ul', { class: 'top-list card' }, goals.slice(0, 5).map((g) => {
+        const st = C.goalStatus(g, state.savingsTxns, today);
+        return h('li', { class: 'top-row' }, h('div', { class: 'top-head' }, h('span', { class: 'top-name' }, g.name),
+          h('span', { class: 'top-amt' }, formatMoney(st.saved), st.target > 0 && h('small', null, ` of ${formatMoney(st.target)}`))),
+        st.pct !== null && h('div', { class: 'bar', 'aria-hidden': 'true' }, h('span', { style: `width:${st.pct * 100}%` })));
+      })) : h('p', { class: 'muted' }, 'No savings goals yet. Add one on the Savings tab.')));
+  }
 
   // Categories
   const cat = C.breakdownByCategory(items, settings.categories, incY);
@@ -146,7 +175,7 @@ function renderDashboard(today, alerts) {
 
   // Sinking fund
   const sf = C.sinkingFund(items, today, settings.lumpDays);
-  body.push(section('Sinking fund', h('div', { class: 'cards' },
+  if (featureOn('sinkingFund')) body.push(section('Sinking fund', h('div', { class: 'cards' },
     stat('Set aside / fortnight', formatMoney(sf.setAsidePerFortnight)), stat('Should have saved by now', formatMoney(sf.shouldHaveSavedTotal))),
   sf.next.length ? h('ul', { class: 'upcoming card' }, sf.next.map((r) => h('li', null,
     h('div', { class: 'up-main' }, h('span', { class: 'up-name' }, r.item.name), h('span', { class: 'up-sub' }, `${formatDate(r.due, today)} · ${dueText(r.days)}`)),
@@ -154,8 +183,10 @@ function renderDashboard(today, alerts) {
     : h('p', { class: 'muted' }, sf.count ? 'Add payment dates to lump-sum bills to see when they are due.' : `No bills with ${settings.lumpDays}+ days between payments.`)));
 
   // 12-month forecast
-  const fc = C.forecast12(items, today);
-  body.push(section('Next 12 months of cash-out', columnChart(fc.windows), forecastTable(fc, today)));
+  if (featureOn('forecast')) {
+    const fc = C.forecast12(items, today);
+    body.push(section('Next 12 months of cash-out', columnChart(fc.windows), forecastTable(fc, today)));
+  }
 
   // Top 5
   const top = C.topItems(items, 5);
@@ -252,7 +283,7 @@ function visibleItems(today) {
 function renderItems(today) {
   const view = state.settings.view;
   const list = visibleItems(today);
-  const riseIds = C.priceRises(state.priceChanges, state.items, today, state.settings.lookbackDays).itemIds;
+  const riseIds = featureOn('priceHistory') ? C.priceRises(state.priceChanges, state.items, today, state.settings.lookbackDays).itemIds : new Set();
   const sum = list.filter(C.isActive).reduce((s, it) => s + C.periodAmount(it, view), 0);
   $('#items-summary').textContent = `${list.length} shown · active ${PERIOD_LABELS[view].toLowerCase()} total ${formatMoney(sum)}`;
   const ul = $('#item-list');
@@ -260,7 +291,7 @@ function renderItems(today) {
   ul.replaceChildren(...list.map((it) => {
     const active = C.isActive(it);
     const due = active ? C.nextDue(it, today) : null;
-    const alert = C.alertFor(it, today, state.settings.alertDays);
+    const alert = featureOn('alerts') ? C.alertFor(it, today, state.settings.alertDays) : null;
     return h('li', { class: 'item-row' + (active ? '' : ' paused') },
       h('button', { type: 'button', class: 'item-main', 'data-edit': it.id, 'aria-label': `Edit ${it.name}` },
         h('span', { class: 'item-text' }, h('span', { class: 'item-name' }, it.name), h('span', { class: 'item-freq' }, freqLabel(it))),
@@ -272,6 +303,136 @@ function renderItems(today) {
         h('button', { type: 'button', class: 'btn small', 'data-whatif': it.id }, 'What if I cancel?'),
         h('button', { type: 'button', class: 'btn small danger', 'data-delete': it.id, 'aria-label': `Delete ${it.name}` }, 'Delete')));
   }));
+}
+
+/* ----- one-off spends ----- */
+function renderSpend(today) {
+  const cats = state.settings.categories;
+  const sel = $('#sp-cat'); const cur = sel.value;
+  sel.replaceChildren(h('option', { value: '' }, '— none —'), ...cats.map((c) => h('option', { value: c }, c)));
+  sel.value = cats.includes(cur) ? cur : '';
+  if (!$('#sp-date').value) $('#sp-date').value = today;
+  const sum = C.oneOffSummary(state.oneOffs, today, cats);
+  $('#spend-summary').replaceChildren(stat('This month', formatMoney(sum.thisMonth)), stat('Last 30 days', formatMoney(sum.last30)),
+    stat('Year to date', formatMoney(sum.ytd)), stat('+ monthly recurring', formatMoney(sum.thisMonth + C.totalCosts(state.items).Month)));
+  const list = state.oneOffs.slice().sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+  $('#spend-list').replaceChildren(...(list.length ? list.map((sp) => h('li', { class: 'item-row' },
+    h('button', { type: 'button', class: 'item-main', 'data-spend-edit': sp.id, 'aria-label': `Edit ${sp.name}` },
+      h('span', { class: 'item-text' }, h('span', { class: 'item-name' }, sp.name), h('span', { class: 'item-freq' }, formatDate(sp.date, today) + (sp.category ? ` · ${sp.category}` : ''))),
+      h('span', { class: 'item-cost' }, formatMoney(sp.amount))),
+    h('div', { class: 'row-actions' }, h('button', { type: 'button', class: 'btn small danger', 'data-spend-del': sp.id, 'aria-label': `Delete ${sp.name}` }, 'Delete'))))
+    : [h('li', { class: 'empty' }, 'No one-off spends yet.')]));
+}
+function endSpendEdit() {
+  state.editingSpendId = null;
+  $('#sp-name').value = ''; $('#sp-amount').value = '';
+  $('#spend-form-title').textContent = 'Add a one-off spend'; $('#sp-submit').textContent = 'Add spend'; $('#sp-cancel').hidden = true;
+}
+function startSpendEdit(sp) {
+  state.editingSpendId = sp.id;
+  $('#sp-name').value = sp.name; $('#sp-amount').value = String(sp.amount); $('#sp-date').value = sp.date; $('#sp-cat').value = sp.category;
+  $('#spend-form-title').textContent = 'Edit spend'; $('#sp-submit').textContent = 'Update spend'; $('#sp-cancel').hidden = false; $('#sp-error').textContent = '';
+  window.scrollTo(0, 0); $('#sp-name').focus();
+}
+function submitSpend(e) {
+  e.preventDefault();
+  const name = $('#sp-name').value.trim(); const amount = parseMoney($('#sp-amount').value); const date = $('#sp-date').value;
+  const msg = !name ? 'Enter what you spent it on.' : !(amount > 0) ? 'Amount must be greater than 0.' : !date ? 'Enter a date.' : '';
+  $('#sp-error').textContent = msg;
+  if (msg) return;
+  const editing = state.oneOffs.find((x) => x.id === state.editingSpendId);
+  const sp = normaliseSpend({ id: editing ? editing.id : newId(), name, amount, date, category: $('#sp-cat').value });
+  if (editing) Object.assign(editing, sp); else state.oneOffs.push(sp);
+  toast(editing ? 'Spend updated.' : 'Spend added.');
+  endSpendEdit(); save(); render();
+}
+
+/* ----- savings ----- */
+function renderSavings(today) {
+  const goals = state.savingsGoals; const txns = state.savingsTxns;
+  $('#savings-total').replaceChildren(h('div', { class: 'cards' }, stat('Total saved', formatMoney(C.totalSaved(goals, txns)), 'good'), stat('Goals', goals.length)));
+  $('#goal-list').replaceChildren(...(goals.length ? goals.map((g) => goalCard(g, today)) : [h('li', { class: 'empty' }, 'No savings goals yet. Add one above.')]));
+}
+function goalCard(g, today) {
+  const st = C.goalStatus(g, state.savingsTxns, today);
+  const history = state.savingsTxns.filter((t) => t.goalId === g.id).sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+  const sub = st.target > 0 ? `Target ${formatMoney(st.target)}${g.targetDate ? ` by ${formatDate(g.targetDate, today)}` : ''}` : 'No target set';
+  const plan = st.reached ? chip('✓ Goal reached', 'good')
+    : st.perFortnight !== null ? chip(`Save ${formatMoney(st.perFortnight)} / fortnight`, 'need')
+      : st.daysLeft !== null && st.daysLeft <= 0 && st.target > 0 ? chip('▲ Past target date', 'warn') : null;
+  return h('li', { class: 'item-row' },
+    h('div', { class: 'item-main static' },
+      h('span', { class: 'item-text' }, h('span', { class: 'item-name' }, g.name), h('span', { class: 'item-freq' }, sub)),
+      h('span', { class: 'item-cost' }, formatMoney(st.saved))),
+    st.pct !== null && h('div', { class: 'goal-progress' },
+      h('div', { class: 'bar', role: 'progressbar', 'aria-label': `${g.name} progress`, 'aria-valuemin': '0', 'aria-valuemax': '100', 'aria-valuenow': String(Math.round(st.pct * 100)) },
+        h('span', { class: st.reached ? 'done' : '', style: `width:${st.pct * 100}%` })),
+      h('p', { class: 'goal-meta' }, `${Math.round(st.pct * 100)}% · ${st.reached ? 'target met' : `${formatMoney(st.remaining)} to go`}`)),
+    plan && h('div', { class: 'chips' }, plan),
+    h('div', { class: 'row-actions' },
+      h('button', { type: 'button', class: 'btn small', 'data-goal-in': g.id }, 'Add money'),
+      h('button', { type: 'button', class: 'btn small', 'data-goal-out': g.id }, 'Withdraw'),
+      h('button', { type: 'button', class: 'btn small', 'data-goal-edit': g.id }, 'Edit')),
+    history.length > 0 && h('details', { class: 'history' }, h('summary', null, `History (${history.length})`),
+      h('ul', null, history.slice(0, 20).map((t) => h('li', null,
+        h('span', null, `${formatDate(t.date, today)} · `, h('strong', { class: t.amount > 0 ? 'pos' : 'neg' }, `${t.amount > 0 ? '+' : '−'}${formatMoney(Math.abs(t.amount))}`)),
+        h('button', { type: 'button', class: 'btn small danger', 'data-txn-del': t.id, 'aria-label': 'Delete this entry' }, 'Delete'))))));
+}
+function submitGoal(e) {
+  e.preventDefault();
+  const name = $('#g-name').value.trim(); const targetText = $('#g-target').value.trim(); const startText = $('#g-start').value.trim();
+  const target = targetText ? parseMoney(targetText) : 0; const start = startText ? parseMoney(startText) : 0;
+  const msg = !name ? 'Enter a goal name.' : !(target >= 0) ? 'Target must be a number.' : !(start >= 0) ? 'Already saved must be a number.' : '';
+  $('#g-error').textContent = msg;
+  if (msg) return;
+  const goal = normaliseGoal({ id: newId(), name, target, targetDate: $('#g-date').value });
+  state.savingsGoals.push(goal);
+  if (start > 0) state.savingsTxns.push(normaliseTxn({ id: newId(), goalId: goal.id, date: T(), amount: start }));
+  ['#g-name', '#g-target', '#g-start', '#g-date'].forEach((id) => { $(id).value = ''; });
+  save(); render(); toast(`Goal “${goal.name}” added.`);
+}
+function openGoalMoney(goal, mode) {
+  const bal = C.goalBalance(goal, state.savingsTxns);
+  const amt = h('input', { id: 'gm-amt', type: 'text', inputmode: 'decimal', autocomplete: 'off' });
+  const date = h('input', { id: 'gm-date', type: 'date', value: T() });
+  const err = h('p', { class: 'error', role: 'alert' });
+  const body = h('form', { novalidate: true, onsubmit: (e) => {
+    e.preventDefault();
+    const a = parseMoney(amt.value);
+    err.textContent = !(a > 0) ? 'Enter an amount greater than 0.' : !date.value ? 'Enter a date.' : mode === 'out' && a > bal + 1e-9 ? `Only ${formatMoney(bal)} is saved in this goal.` : '';
+    if (err.textContent) return;
+    state.savingsTxns.push(normaliseTxn({ id: newId(), goalId: goal.id, date: date.value, amount: mode === 'out' ? -a : a }));
+    save(); render(); closeSheet(); toast(mode === 'out' ? `Withdrew ${formatMoney(a)}.` : `Added ${formatMoney(a)} to ${goal.name}.`);
+  } },
+  h('div', { class: 'field' }, h('label', { for: 'gm-amt' }, 'Amount ($)'), amt), h('div', { class: 'field' }, h('label', { for: 'gm-date' }, 'Date'), date), err,
+  h('div', { class: 'actions' }, h('button', { type: 'button', class: 'btn ghost', onclick: closeSheet }, 'Cancel'), h('button', { type: 'submit', class: 'btn primary' }, mode === 'out' ? 'Withdraw' : 'Add money')));
+  openSheet(`${mode === 'out' ? 'Withdraw from' : 'Add money to'} ${goal.name}`, body);
+  amt.focus();
+}
+function openGoalEdit(goal) {
+  const name = h('input', { id: 'ge-name', type: 'text', value: goal.name, maxlength: 80 });
+  const target = h('input', { id: 'ge-target', type: 'text', inputmode: 'decimal', value: goal.target > 0 ? String(goal.target) : '' });
+  const date = h('input', { id: 'ge-date', type: 'date', value: goal.targetDate });
+  const err = h('p', { class: 'error', role: 'alert' });
+  const body = h('form', { novalidate: true, onsubmit: (e) => {
+    e.preventDefault();
+    const t = target.value.trim() ? parseMoney(target.value) : 0;
+    err.textContent = !name.value.trim() ? 'Enter a goal name.' : !(t >= 0) ? 'Target must be a number.' : '';
+    if (err.textContent) return;
+    Object.assign(goal, normaliseGoal({ id: goal.id, name: name.value, target: t, targetDate: date.value }));
+    save(); render(); closeSheet(); toast('Goal updated.');
+  } },
+  h('div', { class: 'field' }, h('label', { for: 'ge-name' }, 'Goal name'), name), h('div', { class: 'field' }, h('label', { for: 'ge-target' }, 'Target ($, blank for none)'), target),
+  h('div', { class: 'field' }, h('label', { for: 'ge-date' }, 'Target date'), date), err,
+  h('div', { class: 'actions' },
+    h('button', { type: 'button', class: 'btn danger', onclick: async () => {
+      if (await confirmDanger('Delete goal?', `“${goal.name}” and its history will be deleted.`, 'Delete')) {
+        state.savingsGoals = state.savingsGoals.filter((g) => g.id !== goal.id); state.savingsTxns = state.savingsTxns.filter((t) => t.goalId !== goal.id);
+        save(); render(); closeSheet(); toast('Goal deleted.');
+      }
+    } }, 'Delete goal'),
+    h('button', { type: 'button', class: 'btn ghost', onclick: closeSheet }, 'Cancel'), h('button', { type: 'submit', class: 'btn primary' }, 'Save')));
+  openSheet('Edit goal', body);
 }
 
 /* ----- price history ----- */
@@ -306,9 +467,14 @@ function renderSettings() {
   set('#s-inc-amount', s.income.amount > 0 ? String(s.income.amount) : ''); set('#s-inc-every', String(s.income.every));
   set('#s-inc-period', s.income.period); set('#s-alert', String(s.alertDays)); set('#s-lump', String(s.lumpDays)); set('#s-look', String(s.lookbackDays));
   document.querySelectorAll('#theme-toggle button').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.theme === s.theme)));
+  if (!$('#feature-list').contains(document.activeElement)) {
+    $('#feature-list').replaceChildren(...FEATURES.map((f) => h('label', { class: 'check feature' },
+      h('input', { type: 'checkbox', 'data-feature': f.key, checked: s.features[f.key] }), h('span', null, h('strong', null, f.label), h('br'), h('span', { class: 'hint' }, f.hint)))));
+  }
   if (!$('#cat-list').contains(document.activeElement)) {
-    $('#cat-list').replaceChildren(...s.categories.map((c, i) => h('div', { class: 'field' },
-      h('label', { for: 'cat-' + i, class: 'sr-only' }, `Category ${i + 1}`), h('input', { id: 'cat-' + i, type: 'text', value: c, maxlength: 40, 'data-cat': i }))));
+    $('#cat-list').replaceChildren(...s.categories.map((c, i) => h('div', { class: 'cat-row' },
+      h('label', { for: 'cat-' + i, class: 'sr-only' }, `Category ${i + 1}`), h('input', { id: 'cat-' + i, type: 'text', value: c, maxlength: 40, 'data-cat': i }),
+      h('button', { type: 'button', class: 'btn small danger', 'data-cat-del': i, 'aria-label': `Remove ${c}` }, 'Remove'))));
   }
   renderNotifyUI();
 }
@@ -461,16 +627,20 @@ async function handleImportFile(file) {
     ? h('div', null, h('p', null, `${parsed.errors.length} of ${parsed.total} row${parsed.total === 1 ? '' : 's'} failed validation and will be skipped:`),
       h('ul', { class: 'problems' }, parsed.errors.slice(0, 12).map((x) => h('li', null, `Row ${x.row}${x.name ? ` (${x.name})` : ''}: ${x.message}`)),
         parsed.errors.length > 12 && h('li', null, `…and ${parsed.errors.length - 12} more`))) : null;
-  if (!parsed.items.length) { await ask('Nothing to import', h('div', null, h('p', null, 'No valid items were found.'), problems), [{ label: 'OK', value: 'ok' }]); return; }
+  if (!parsed.items.length && !(parsed.oneOffs.length || parsed.savingsGoals.length)) { await ask('Nothing to import', h('div', null, h('p', null, 'No valid items were found.'), problems), [{ label: 'OK', value: 'ok' }]); return; }
   const n = parsed.items.length;
   const content = h('div', null, h('p', null, `Found ${n} valid item${n === 1 ? '' : 's'}. Merge adds new items and updates ones with the same name. Replace deletes your current ${state.items.length} items first.`), problems);
   const choice = await ask('Import data', content, [{ label: 'Cancel', value: '', kind: 'ghost' }, { label: 'Merge', value: 'merge' }, { label: 'Replace', value: 'replace', kind: 'danger' }]);
   if (!choice) return;
   if (choice === 'replace') {
     state.items = parsed.items; state.priceChanges = parsed.priceChanges;
+    state.oneOffs = parsed.oneOffs; state.savingsGoals = parsed.savingsGoals; state.savingsTxns = parsed.savingsTxns;
     if (parsed.settings) state.settings = normaliseSettings({ ...parsed.settings, theme: state.settings.theme });
   } else {
     mergeItems(state.items, parsed.items);
+    const addNew = (target, incoming) => incoming.forEach((x) => { if (!target.some((y) => y.id === x.id)) target.push(x); });
+    addNew(state.oneOffs, parsed.oneOffs); addNew(state.savingsGoals, parsed.savingsGoals);
+    addNew(state.savingsTxns, parsed.savingsTxns.filter((t) => state.savingsGoals.some((g) => g.id === t.goalId)));
     parsed.priceChanges.forEach((c) => { if (!state.priceChanges.some((x) => x.id === c.id) && state.items.some((i) => i.id === c.itemId)) state.priceChanges.push(c); });
   }
   save(); render();
@@ -539,7 +709,7 @@ async function toggleNotify() {
   if (perm === 'granted') { toast('Notifications on.'); notifyAlerts(); }
 }
 async function notifyAlerts() {
-  if (!state.settings.notify || !('Notification' in window) || Notification.permission !== 'granted') return;
+  if (!state.settings.notify || !featureOn('alerts') || !('Notification' in window) || Notification.permission !== 'granted') return;
   const alerts = C.currentAlerts(state.items, T(), state.settings.alertDays);
   if (!alerts.length) return;
   const title = `${alerts.length} budget alert${alerts.length === 1 ? '' : 's'}`;
@@ -570,6 +740,36 @@ function bindEvents() {
       state.items = state.items.filter((x) => x.id !== del.id); state.priceChanges = state.priceChanges.filter((c) => c.itemId !== del.id);
       save(); render(); toast('Item deleted.'); return;
     }
+    const se = t.closest('[data-spend-edit]');
+    if (se) { const sp = state.oneOffs.find((x) => x.id === se.dataset.spendEdit); if (sp) startSpendEdit(sp); return; }
+    const sd = t.closest('[data-spend-del]');
+    if (sd) {
+      const sp = state.oneOffs.find((x) => x.id === sd.dataset.spendDel);
+      if (sp && await confirmDanger('Delete spend?', `“${sp.name}” (${formatMoney(sp.amount)}) will be removed.`, 'Delete')) {
+        state.oneOffs = state.oneOffs.filter((x) => x.id !== sp.id); if (state.editingSpendId === sp.id) endSpendEdit(); save(); render();
+      }
+      return;
+    }
+    const goalOf = (attr) => { const el = t.closest(`[${attr}]`); return el ? state.savingsGoals.find((g) => g.id === el.getAttribute(attr)) : null; };
+    const gi = goalOf('data-goal-in'); if (gi) { openGoalMoney(gi, 'in'); return; }
+    const go = goalOf('data-goal-out'); if (go) { openGoalMoney(go, 'out'); return; }
+    const ge = goalOf('data-goal-edit'); if (ge) { openGoalEdit(ge); return; }
+    const td = t.closest('[data-txn-del]');
+    if (td && await confirmDanger('Delete entry?', 'This removes the deposit or withdrawal from the goal.', 'Delete')) {
+      state.savingsTxns = state.savingsTxns.filter((x) => x.id !== td.dataset.txnDel); save(); render(); return;
+    }
+    const cd = t.closest('[data-cat-del]');
+    if (cd) {
+      const name = state.settings.categories[Number(cd.dataset.catDel)];
+      const used = state.items.filter((it) => it.category === name).length + state.oneOffs.filter((x) => x.category === name).length;
+      if (await confirmDanger(`Remove “${name}”?`, used ? `${used} item${used === 1 ? '' : 's'} and spend${used === 1 ? '' : 's'} use it and will become uncategorised.` : 'No items or spends use this category.', 'Remove')) {
+        state.settings.categories = state.settings.categories.filter((c) => c !== name);
+        state.items.forEach((it) => { if (it.category === name) it.category = ''; }); state.oneOffs.forEach((x) => { if (x.category === name) x.category = ''; });
+        if (state.fCat === name) state.fCat = '';
+        save(); render(); toast(`Removed ${name}.`);
+      }
+      return;
+    }
     const pa = t.closest('[data-price-apply]');
     if (pa) {
       const c = state.priceChanges.find((x) => x.id === pa.dataset.priceApply); const it = c && state.items.find((x) => x.id === c.itemId);
@@ -590,6 +790,10 @@ function bindEvents() {
   form.addEventListener('submit', submitForm); form.addEventListener('input', updatePreview);
   $('#form-cancel').addEventListener('click', () => $('#form-dialog').close());
 
+  $('#spend-form').addEventListener('submit', submitSpend);
+  $('#sp-cancel').addEventListener('click', () => { endSpendEdit(); $('#sp-error').textContent = ''; });
+  $('#goal-form').addEventListener('submit', submitGoal);
+
   $('#price-form').addEventListener('submit', submitPrice);
   $('#p-item').addEventListener('change', (e) => {
     const it = state.items.find((x) => x.id === e.target.value);
@@ -609,7 +813,21 @@ function bindEvents() {
     if (!name || state.settings.categories.some((c, j) => j !== i && c.toLowerCase() === name.toLowerCase())) { e.target.value = old; toast('Category names must be unique and not blank.'); return; }
     state.settings.categories[i] = name;
     state.items.forEach((it) => { if (it.category === old) it.category = name; });
+    state.oneOffs.forEach((x) => { if (x.category === old) x.category = name; });
     save(); render();
+  });
+  $('#cat-add-form').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const name = $('#cat-new').value.trim().slice(0, 40); const cats = state.settings.categories;
+    if (!name) { toast('Enter a category name.'); return; }
+    if (cats.some((c) => c.toLowerCase() === name.toLowerCase())) { toast('That category already exists.'); return; }
+    if (cats.length >= MAX_CATEGORIES) { toast(`You can have up to ${MAX_CATEGORIES} categories.`); return; }
+    cats.push(name); $('#cat-new').value = ''; save(); render(); toast(`Added ${name}.`);
+  });
+  $('#feature-list').addEventListener('change', (e) => {
+    const key = e.target.dataset.feature;
+    if (!key) return;
+    state.settings.features[key] = e.target.checked; save(); render();
   });
   document.querySelectorAll('#theme-toggle button').forEach((b) => b.addEventListener('click', () => { state.settings.theme = b.dataset.theme; save(); applyTheme(); renderSettings(); }));
   matchMedia('(prefers-color-scheme: dark)').addEventListener('change', applyTheme);

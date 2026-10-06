@@ -1,5 +1,5 @@
 // CSV reading/writing, spreadsheet-compatible item import/export, and JSON import.
-import { normaliseItem, normalisePriceChange } from './model.js';
+import { normaliseItem, normalisePriceChange, normaliseSpend, normaliseGoal, normaliseTxn } from './model.js';
 
 export const CSV_HEADERS = ['Item', 'Cost', 'Every', 'Period', 'Category', 'Need/Want', 'My share', 'Active', 'Payment date', 'Trial ends', 'Notes', 'Link'];
 const KEYS = ['name', 'cost', 'every', 'period', 'category', 'type', 'share', 'active', 'paymentDate', 'trialEnds', 'notes', 'link'];
@@ -67,10 +67,14 @@ export function parseJSONImport(text) {
     if (res.item) items.push(res.item); else errors.push({ row: i + 1, name: String(r?.name || ''), message: res.error });
   });
   const priceChanges = Array.isArray(data.priceChanges) ? data.priceChanges.map(normalisePriceChange).filter(Boolean) : [];
-  return { items, errors, total: rawItems.length, priceChanges, settings: Array.isArray(data) ? null : data.settings || null };
+  const list = (key, fn) => (!Array.isArray(data) && Array.isArray(data[key]) ? data[key].map(fn).filter(Boolean) : []);
+  return {
+    items, errors, total: rawItems.length, priceChanges, settings: Array.isArray(data) ? null : data.settings || null,
+    oneOffs: list('oneOffs', normaliseSpend), savingsGoals: list('savingsGoals', normaliseGoal), savingsTxns: list('savingsTxns', normaliseTxn),
+  };
 }
 
 export function parseImportFile(text, filename) {
   const t = String(text).replace(/^﻿/, '').trim();
-  return /\.json$/i.test(filename) || /^[[{]/.test(t) ? parseJSONImport(t) : { ...parseItemsCSV(t), priceChanges: [], settings: null };
+  return /\.json$/i.test(filename) || /^[[{]/.test(t) ? parseJSONImport(t) : { ...parseItemsCSV(t), priceChanges: [], settings: null, oneOffs: [], savingsGoals: [], savingsTxns: [] };
 }
